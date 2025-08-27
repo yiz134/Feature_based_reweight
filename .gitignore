@@ -1,0 +1,76 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+# Editor-based HTTP Client requests
+/httpRequests/
+# Datasource local storage ignored files
+/dataSources/
+/dataSources.local.xml
+*.json
+
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.env/
+.venv/
+env/
+venv/
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Hugging Face models / transformers
+*.bin
+*.pt
+*.ckpt
+*.safetensors
+*.th
+*.pth
+# Model outputs and logs
+outputs/
+checkpoints/
+logs/
+*.log
+
+# Large files or intermediate results
+*.npy
+*.npz
+*.h5
+*.onnx
+
+# Datasets
+data/
+datasets/
+# Hugging Face models / transformers
+*.bin
+*.pt
+*.ckpt
+*.safetensors
+*.pth
+
+# Model outputs and logs
+outputs/
+checkpoints/
+logs/
+*.log
+
+# Large files or intermediate results
+*.npy
+*.npz
+*.h5
+*.onnx
+
+# Datasets
+data/
+datasets/
+
+# VSCode or PyCharm settings
+.vscode/
+.idea/"*.pth" 
+"*.pth" 
+*.pth

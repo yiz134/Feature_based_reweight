@@ -1,0 +1,8 @@
+jax>=0.4.13
+jaxlib>=0.4.13
+flax>=0.7.4
+optax>=0.1.7
+numpy>=1.24.0
+tqdm>=4.65.0
+ipywidgets>=8.0.0
+jupyter>=1.0.0 
