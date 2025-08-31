@@ -50,30 +50,13 @@ class ResNet_s(nn.Module):
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
-    def forward(self, x, return_feat=False):
+    def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.layer1(out)
         out = self.layer2(out)
         out = self.layer3(out)
         out = self.layer4(out)
         out = F.avg_pool2d(out, 4)
-        feat = out.view(out.size(0), -1)
-        out = self.linear(feat)
-        if return_feat:
-            return out, feat.detach().clone()#y, out
-        else:
-            return out
-
-    @torch.no_grad()
-    def get_features(self, x):
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = self.layer1(out)
-        out = self.layer2(out)
-        out = self.layer3(out)
-        out = self.layer4(out)
-        out = F.avg_pool2d(out, 4)
-        out = out.view(out.size(0), -1)
-        return out
-
-    def classifier(self, feat):
-        return self.linear(feat)
+        y = out.view(out.size(0), -1)
+        out = self.linear(y)
+        return y, out

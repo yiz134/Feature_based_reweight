@@ -9,17 +9,27 @@ import matplotlib.pyplot as plt
 from load_data.data_utils import get_noisy_labels
 import types
 import os
-from utils import *
+from utils.util import *
+from data_loader.cifar10 import load_cifar10
 
+config = {
+    "data_loader": {"args": {"data_dir": "G:/datasets"}},
+    "trainer": {
+        "percent": 0.4,
+        "asym": True,
+        "instance": False,
+        "seed": 0,
+    },
+}
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-train_loader, test_loader, X_val, y_val, train_clean_idx, train_noise_idx, val_idx = load_cifar((49000, 1000),
-                                                                                                device='cuda',
-                                                                                                noise_rate=0.5,
-                                                                                                batch_size=128,
-                                                                                                #noise_type='symmetric'
-)
-
-model = model.resnet34()#resnet.resnet32()
+# train_loader, test_loader, X_val, y_val, train_clean_idx, train_noise_idx, val_idx = load_cifar((49000, 1000),
+#                                                                                                 device='cuda',
+#                                                                                                 noise_rate=0.5,
+#                                                                                                 batch_size=128,
+#                                                                                                 #noise_type='symmetric'
+# )
+train_loader, val_loader, test_loader, X_val, y_val, train_clean_idx, train_noise_idx = load_cifar10(config, 2000)
+model = model.resnet34(num_classes=10)#resnet.resnet32()
 model.reweight_method = types.MethodType(reweight_feature, model)
 model = model.to(device)
 
@@ -30,13 +40,13 @@ optimizer = torch.optim.SGD(
     weight_decay=0.001#1e-4
 )
 lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-                                                    milestones=[40, 80], last_epoch=- 1, gamma=0.01)#, gamma=0.001)  # 80, 100, total 120
+                                                    milestones=[40, 80, 100], last_epoch=- 1)#, try 50, gamma=0.001)  # 80, 100, total 120
 w_list, loss = train_loop(model, optimizer, train_loader, X_val, y_val, test_loader,
                           alpha=[1/9, 0],#1/9
-                          num_epochs=120,  start_epoch=0,
+                          num_epochs=150,  start_epoch=0, val_feature=True,
                           reweight_every=1, max_clip=1, clean_only=False,
                           reweight=True, args=device, test_every=1, lr_scheduler=lr_scheduler,
-                          noisy_rate=None, recompute=True, val_steps=100, skip_epochs=10, correction=None
+                          noisy_rate=None, recompute=True, val_steps=30, skip_epochs=20, correction=None
                           )
 # 100, 150, total 200
 torch.save(w_list, "no_recompute.pth")
@@ -49,8 +59,8 @@ else:
 data['Not_Gradual'] = loss
 torch.save(data, save_path)
 
-plot_weights_hist(w_list[-1].cpu(), train_clean_idx, train_noise_idx, val_idx)
-plot_weight_dynamic(w_list, train_clean_idx, train_noise_idx, val_idx)
+# plot_weights_hist(w_list[-1].cpu(), train_clean_idx, train_noise_idx, val_idx)
+# plot_weight_dynamic(w_list, train_clean_idx, train_noise_idx, val_idx)
 # w_tensor = torch.stack(w_list, dim=0)
 # w_tensor_max, _ = torch.max(w_tensor, dim=0)
 # w_tensor_min, _ = torch.min(w_tensor, dim=0)

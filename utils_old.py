@@ -251,7 +251,7 @@ def transform_Kmat(Kmat, y_val, num_class=10):
     return means - shift.unsqueeze(1), class_idx, means
 
 
-def get_noisy_rate(weight, y_clean, y_noisy, thr=0.1):
+def get_noisy_rate(weight, y_clean, y_noisy, thr=0.0):
     err_mask = (y_clean.cpu() != y_noisy.cpu())
     total_err = err_mask.sum().item()
     if total_err == 0:
