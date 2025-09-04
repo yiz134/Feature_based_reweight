@@ -9,6 +9,18 @@ from tqdm import tqdm
 import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
+
+def get_features_batched(model, X, batch_size=256):
+    loader = DataLoader(TensorDataset(X), batch_size=batch_size, shuffle=False)
+    feats_list = []
+    device = X.device
+    with torch.no_grad():
+        for (xb,) in loader:
+            f = model.get_features(xb)
+            feats_list.append(f.detach().cpu())
+    features = torch.cat(feats_list, dim=0).to(device)
+    return features
+
 def train_loop(model, optimizer,
     train_loader, X_val, y_val, test_loader,
     alpha=[0.1, 0], visualize=False, start_epoch=0,
@@ -42,7 +54,7 @@ def train_loop(model, optimizer,
 
     # Training loop
     for epoch in range(start_epoch, num_epochs):
-        if epoch<=40:
+        if epoch<5:
             alpha0 = alpha[0]
         else:
             alpha0 = alpha[1]
@@ -58,7 +70,7 @@ def train_loop(model, optimizer,
         pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}", unit="batch")
         if val_feature:
             model.eval()
-            val_input = model.get_features(X_val)
+            val_input = get_features_batched(model, X_val)#model.get_features(X_val)
             model.train()
         else:
             val_input = X_val

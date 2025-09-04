@@ -216,10 +216,26 @@ class ResNet(nn.Module):
         out = torch.flatten(x, 1)
         logit = self.fc(out)
 
-        return out, logit
+        return logit#out, logit
 
     def forward(self, x):
         return self._forward_impl(x)
+
+    @torch.no_grad()
+    def get_features(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+
+        x = self.avgpool(x)
+        out = torch.flatten(x, 1)
+        return out
 
 
 def _resnet(arch, block, layers, pretrained, progress, **kwargs):

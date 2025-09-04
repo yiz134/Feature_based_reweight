@@ -1,13 +1,11 @@
-import sys
-import os
 import numpy as np
-from PIL import Image
-import torchvision
-from torch.utils.data.dataset import Subset
-from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances 
 import torch
-import torch.nn.functional as F
 import random
+from torchvision import datasets, transforms
+from base import BaseDataLoader
+from utils.parse_config import ConfigParser
+from PIL import Image
+from collections import OrderedDict
 
 def fix_seed(seed=777):
     np.random.seed(seed)
@@ -122,9 +120,9 @@ class Clothing1M_Dataset(torch.utils.data.Dataset):
         
         if self.test or self.val:
             img = self.transform(image)
-            return img, target, index, target
+            return img, target, torch.as_tensor(index, dtype=torch.long), target
         else:
-            return img0, target, id_raw, target
+            return img0, target, torch.as_tensor(index, dtype=torch.long), target
 
     def __len__(self):
         if self.test:
@@ -147,3 +145,111 @@ class Clothing1M_Dataset(torch.utils.data.Dataset):
     def truncate(self, teacher_idx):
         self.train_imgs = self.train_imgs[teacher_idx]
         self.train_labels_ = self.train_labels_[teacher_idx]
+
+
+class Clothing1MDataLoader(BaseDataLoader):
+    def __init__(self, data_dir, batch_size, shuffle=True, validation_split=0.0, num_batches=0, training=True,
+                 num_workers=0, pin_memory=True, config=None, teacher_idx=None, seed=8888):
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.num_batches = num_batches
+        self.training = training
+
+        self.transform_train = transforms.Compose([
+            transforms.Resize(256),
+            transforms.RandomCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.6959, 0.6537, 0.6371), (0.3113, 0.3192, 0.3214)),
+        ])
+        self.transform_val = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize((0.6959, 0.6537, 0.6371), (0.3113, 0.3192, 0.3214)),
+        ])
+
+        self.data_dir = data_dir
+        # if config == None:
+        #     config = ConfigParser.get_instance()
+        # cfg_trainer = config['trainer']
+        cfg_trainer = OrderedDict([
+                                    ('epochs', 10),
+                                    ('warmup', 0),
+                                    ('save_dir', 'saved/'),
+                                    ('save_period', 1),
+                                    ('verbosity', 2),
+                                    ('label_dir', 'saved/'),
+                                    ('monitor', 'max test_my_metric'),
+                                    ('early_stop', 2000),
+                                    ('tensorboard', False),
+                                    ('mlflow', True),
+                                    ('_percent', 'Percentage of noise'),
+                                    ('percent', 0.8),
+                                    ('_begin', 'When to begin updating labels'),
+                                    ('begin', 0),
+                                    ('_asym', 'symmetric noise if false'),
+                                    ('asym', False)])
+        self.train_dataset, self.val_dataset = get_clothing1m(data_dir, cfg_trainer,
+                                                              num_samples=self.num_batches * self.batch_size,
+                                                              train=training,
+                                                              #         self.train_dataset, self.val_dataset = get_clothing1m(config['data_loader']['args']['data_dir'], cfg_trainer, num_samples=260000, train=training,
+                                                              transform_train=self.transform_train,
+                                                              transform_val=self.transform_val, teacher_idx=teacher_idx,
+                                                              seed=seed)
+
+        super().__init__(self.train_dataset, batch_size, shuffle, validation_split, num_workers, pin_memory,
+                         val_dataset=self.val_dataset)
+
+
+def load_clothing1m(config, num_clean_val=2000):
+    train_loader = Clothing1MDataLoader(
+        config['data_dir'],
+        batch_size=config['batch_size'],
+        shuffle=True,
+        validation_split=0.0,
+        num_batches=config['num_batches'],
+        training=True,
+        num_workers=0,
+        pin_memory=True
+    )
+
+    val_loader   = train_loader.split_validation()
+
+    test_loader = Clothing1MDataLoader(
+        config['data_dir'],
+        batch_size=128,
+        shuffle=False,
+        validation_split=0.0,
+        training=False,
+        num_workers=0
+    ).split_validation()
+
+    X_list, y_list, got = [], [], 0
+    with torch.no_grad():
+        for imgs, labels, _, _ in val_loader:
+            need = num_clean_val - got
+            if need <= 0:
+                break
+            X_list.append(imgs[:need])
+            y_list.append(labels[:need])
+            got += min(imgs.size(0), need)
+
+    if X_list:
+        X_val = torch.cat(X_list, dim=0).cuda(non_blocking=True)
+        y_val = torch.cat(y_list, dim=0).cuda(non_blocking=True)
+    else:
+        X_val = torch.empty(0, device='cuda')
+        y_val = torch.empty(0, dtype=torch.long, device='cuda')
+
+    return train_loader, val_loader, test_loader, X_val, y_val
+
+# config = {
+#   "batch_size": 64,
+#   "num_batches": 2000,
+#     "data_dir": "G:/datasets/Clothing1M/clothing1M"
+# }
+# train_loader, val_loader, test_loader, X_val, y_val = load_clothing1m(config)
+# for img, target_noisy, id_raw, target_also_noisy in train_loader:
+#     print(target_noisy == target_also_noisy)
+# print(len(train_loader))
