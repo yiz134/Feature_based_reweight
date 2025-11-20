@@ -2,99 +2,132 @@ from trainer.train import *
 from trainer.reweight_methods import *
 import torch.optim as optim
 from models import model
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import types
 import os
 from utils.util import *
-from data_loader.cifar10 import load_cifar10
+#from data_loader.cifar10 import load_cifar10
+from data_loader.imbalance_cifar10 import load_cifar10
+
 from data_loader.cifar100 import load_cifar100
 from data_loader.clothing1m import load_clothing1m
+import argparse
 
+def get_args():
+    parser = argparse.ArgumentParser(description="Training configuration")
+    parser.add_argument('--dataset', type=str, default='cifar10',
+                        choices=['clothing1m', 'cifar10', 'cifar100'])
+    parser.add_argument('--data_dir', type=str, default='/root/autodl-tmp/')
+    parser.add_argument('--batch_size', type=int, default=64)
+    parser.add_argument('--clean', type=int, default=2000) #100, 0.4的accuracy是89.38 
+    parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--num_epochs', type=int, default=150)
+    parser.add_argument('--noisy_rate', type=float, default=0.4)
+    parser.add_argument('--asym', action='store_true', help='use asymmetric noise')
+    parser.add_argument('--noise_type', default=None)
+    args = parser.parse_args()
+    return args
 
-config = {
-    "data_loader": {"args": {"data_dir": "G:/datasets"}},
-    "trainer": {
-        "percent": 0.2,
-        "asym": False,
-        "instance": False,
-        "seed": 0,
-    },
-}
-
-dataset = "clothing1m"
-if dataset=="clothing1m":
-    config = {
-        "batch_size": 64,#64
-        "num_batches": 2000,
-        "data_dir": "G:/datasets/Clothing1M/clothing1M"
+if __name__ == "__main__": 
+    args = get_args()
+    print("asym=", args.asym)
+    print(args.noisy_rate)
+    
+    if args.dataset=="clothing1m":
+        config = {
+            "batch_size": 64,
+            "num_batches": 2000,
+            "data_dir": "/root/autodl-tmp/Clothing1M/clothing1M",
+            "milstones": [5,7,9],
+            "seed": args.seed
+        }
+        train_loader, val_loader, test_loader, X_val, y_val = load_clothing1m(config, num_clean_val=2000)
+        model = model.resnet50(pretrained=True, num_classes=14)
+        epochs = 10
+        optimizer = torch.optim.SGD(
+                                    model.parameters(),
+                                    lr=0.01,
+                                    momentum=0.9,
+                                    weight_decay=0.0005
+                                )
+        lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
+                                                            milestones=[5, 7, 9], last_epoch=- 1)
+    elif args.dataset=="cifar10":
+        alpha = 1/9
+        config = {
+        "data_loader": {"args": {"data_dir": "/root/autodl-tmp"}},
+        "trainer": {
+            "percent": args.noisy_rate,
+            "imbalance_symmetric": True,
+            "imbalance_ratio": 10,
+            "asym": args.asym,
+            "instance": False,
+            "seed": args.seed,
+            "noise_file": args.noise_type
+        },
     }
-    train_loader, val_loader, test_loader, X_val, y_val = load_clothing1m(config, num_clean_val=2000)
-    model = model.resnet50(pretrained=True, num_classes=14)
-    epochs = 10
-    optimizer = torch.optim.SGD(
-                                model.parameters(),
-                                lr=0.01,#0.002,
-                                momentum=0.9,
-                                weight_decay=0.0005#1e-4
+        train_loader, val_loader, test_loader, X_val, y_val, train_clean_idx, train_noise_idx = load_cifar10(config, args.clean)
+        perm = torch.randperm(len(y_val))
+        y_val = y_val[perm]
+        print(X_val.size())
+        model = model.resnet34(num_classes=10) 
+        epochs = 150
+        optimizer = torch.optim.SGD(
+            model.parameters(),
+            lr=0.02, 
+            momentum=0.9,
+            weight_decay=0.001
+        )
+        lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
+                                                            milestones=[40, 80, 100], last_epoch=- 1)
+    elif args.dataset=="cifar100":
+        alpha=1/99
+        config = {
+        "data_loader": {"args": {"data_dir": "/root/autodl-tmp"}},
+        "trainer": {
+            "percent": args.noisy_rate,
+            "asym": args.asym,
+            "instance": False,
+            "seed": args.seed,
+            "noise_file": args.noise_type
+        },
+    }
+        train_loader, val_loader, test_loader, X_val, y_val, train_clean_idx, train_noise_idx = load_cifar100(config, 2000)
+        model = model.resnet34(num_classes=100)
+        epochs = 150
+        optimizer = torch.optim.SGD(
+            model.parameters(),
+            lr=0.02,  
+            momentum=0.9,
+            weight_decay=0.001 
+        )
+        lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
+                                                            milestones=[40, 80, 100], last_epoch=- 1)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+    model.reweight_method = types.MethodType(reweight_feature, model)
+    model = model.to(device)
+    
+    #, try 50, gamma=0.001)  # 80, 100, total 120
+    w_list, loss = train_loop(model, optimizer, train_loader, X_val, y_val, test_loader,
+                            alpha=[alpha, 0],#1/9
+                            num_epochs=epochs,  start_epoch=0, val_feature=True,
+                            reweight_every=1, max_clip=1, clean_only=False,
+                            reweight=True, args=device, test_every=1, lr_scheduler=lr_scheduler,
+                            noisy_rate=None, recompute=True, val_steps=30, skip_epochs=10, correction=None, imbalance=False
                             )
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-                                                        milestones=[5, 7, 9], last_epoch=- 1)
-elif dataset=="cifar10":
-    train_loader, val_loader, test_loader, X_val, y_val, train_clean_idx, train_noise_idx = load_cifar10(config, 2000)
-    model = model.resnet34(num_classes=10)  # resnet.resnet32()
-    epochs = 150
-    optimizer = torch.optim.SGD(
-        model.parameters(),
-        lr=0.02,  # 0.1
-        momentum=0.9,
-        weight_decay=0.001  # 1e-4
-    )
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-                                                        milestones=[40, 80, 100], last_epoch=- 1)
-elif dataset=="cifar100":
-    train_loader, val_loader, test_loader, X_val, y_val, train_clean_idx, train_noise_idx = load_cifar100(config, 2000)
-    model = model.resnet34(num_classes=100)
-    epochs = 150
-    optimizer = torch.optim.SGD(
-        model.parameters(),
-        lr=0.02,  # 0.1
-        momentum=0.9,
-        weight_decay=0.001  # 1e-4
-    )
-    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-                                                        milestones=[40, 80, 100], last_epoch=- 1)
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-# train_loader, test_loader, X_val, y_val, train_clean_idx, train_noise_idx, val_idx = load_cifar((49000, 1000),
-#                                                                                                 device='cuda',
-#                                                                                                 noise_rate=0.5,
-#                                                                                                 batch_size=128,
-#                                                                                                 #noise_type='symmetric'
-# )
-
-
-model.reweight_method = types.MethodType(reweight_feature, model)
-model = model.to(device)
-
-#, try 50, gamma=0.001)  # 80, 100, total 120
-w_list, loss = train_loop(model, optimizer, train_loader, X_val, y_val, test_loader,
-                          alpha=[1/13, 0],#1/9
-                          num_epochs=epochs,  start_epoch=0, val_feature=True,
-                          reweight_every=1, max_clip=1, clean_only=False,
-                          reweight=True, args=device, test_every=1, lr_scheduler=lr_scheduler,
-                          noisy_rate=None, recompute=True, val_steps=5, skip_epochs=1, correction=None
-                          )
 # 100, 150, total 200
-torch.save(w_list, "no_recompute.pth")
-save_path = 'cifar_test_loss_results_noise=0.4'
-if os.path.exists(save_path):
-    data = torch.load(save_path)
-else:
-    data = {}
+# torch.save(w_list, "no_recompute.pth")
+# save_path = 'cifar_test_loss_results_noise=0.4'
+# if os.path.exists(save_path):
+#     data = torch.load(save_path)
+# else:
+#     data = {}
 
-data['Not_Gradual'] = loss
-torch.save(data, save_path)
+# data['Not_Gradual'] = loss
+# torch.save(data, save_path)
 
 # plot_weights_hist(w_list[-1].cpu(), train_clean_idx, train_noise_idx, val_idx)
 # plot_weight_dynamic(w_list, train_clean_idx, train_noise_idx, val_idx)

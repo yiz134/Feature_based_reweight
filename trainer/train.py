@@ -26,7 +26,7 @@ def train_loop(model, optimizer,
     alpha=[0.1, 0], visualize=False, start_epoch=0,
     num_epochs=350, val_steps=None, skip_epochs=None,
     reweight_every=5, correction=None, max_clip=1, clean_only=False, val_feature=False,
-    reweight=False, args=None, test_every=5, lr_scheduler=None, noisy_rate=None, recompute=True):
+    reweight=False, args=None, test_every=5, lr_scheduler=None, noisy_rate=None, recompute=True, imbalance=False):
 
     # Initialize optimizer and loss function
     criterion = nn.CrossEntropyLoss(reduction='none')
@@ -54,7 +54,7 @@ def train_loop(model, optimizer,
 
     # Training loop
     for epoch in range(start_epoch, num_epochs):
-        if epoch<5:
+        if epoch<40:
             alpha0 = alpha[0]
         else:
             alpha0 = alpha[1]
@@ -107,6 +107,8 @@ def train_loop(model, optimizer,
                 batch_weights[mask] = 1.0
                 batch_weights[~mask] = 0.0
             batch_noisy_rate = get_noisy_rate(batch_weights, y_clean, target)
+            if imbalance:
+                batch_weights = get_balanced_weight(batch_weights.detach().clone(), target)
             loss = (criterion(output, target) * batch_weights.detach().clone()).mean()
             optimizer.zero_grad()
             loss.backward()

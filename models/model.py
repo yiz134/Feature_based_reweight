@@ -26,6 +26,14 @@ def resnet18(num_classes=10):
 def resnet34(num_classes=10):
     return ResNet_s(BasicBlock_s, [3,4,6,3], num_classes=num_classes)
 
+def cifar_resnet56(num_classes=10):
+    # 6 * 9 + 2 = 56
+    return CifarResNet(BasicBlock_s, [9, 9, 9], num_classes=num_classes)
+
+def cifar_resnet110(num_classes=10):
+    # 6 * 18 + 2 = 110
+    return CifarResNet(BasicBlock_s, [18, 18, 18], num_classes=num_classes)
+
 # def resnet18(pretrained=False, progress=True, num_classes=10, **kwargs):
 #     r"""ResNet-18 model from
 #     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_

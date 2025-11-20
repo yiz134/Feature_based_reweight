@@ -246,6 +246,35 @@ def load_checkpoint(model, optimizer, lr_scheduler=None, path="checkpoint.pth"):
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     if lr_scheduler is not None and 'lr_scheduler_state_dict' in checkpoint:
         lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
-    start_epoch = checkpoint['epoch'] + 1  # 继续下一个epoch
+    start_epoch = checkpoint['epoch'] + 1  
     loss = checkpoint['loss']
     return model, optimizer, lr_scheduler, start_epoch, loss
+
+
+import torch
+
+def get_balanced_weight(weight, y, num_classes=None, eps=1e-6):
+
+    weight = weight.float()
+    device = weight.device
+
+    if num_classes is None:
+        num_classes = int(y.max().item()) + 1
+
+    clean_mask = weight > 0
+    clean_y = y[clean_mask]
+
+    if clean_y.numel() == 0:
+        return weight  
+    counts = torch.bincount(clean_y, minlength=num_classes).float() 
+    counts = counts + eps
+
+    total_count = counts.sum()
+    cls_weight = total_count / counts            
+    cls_weight = cls_weight / cls_weight.mean()  
+    cls_weight = cls_weight.to(device)          
+
+    new_weight = torch.zeros_like(weight)
+    new_weight[clean_mask] = weight[clean_mask] * cls_weight[y[clean_mask]]
+
+    return new_weight

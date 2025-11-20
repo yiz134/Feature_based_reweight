@@ -211,7 +211,8 @@ def load_clothing1m(config, num_clean_val=2000):
         num_batches=config['num_batches'],
         training=True,
         num_workers=0,
-        pin_memory=True
+        pin_memory=True,
+        seed=config['seed']
     )
 
     val_loader   = train_loader.split_validation()
@@ -222,7 +223,8 @@ def load_clothing1m(config, num_clean_val=2000):
         shuffle=False,
         validation_split=0.0,
         training=False,
-        num_workers=0
+        num_workers=0,
+        seed=config['seed']
     ).split_validation()
 
     X_list, y_list, got = [], [], 0

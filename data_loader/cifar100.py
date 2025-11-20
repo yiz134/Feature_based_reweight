@@ -15,7 +15,7 @@ from numpy.testing import assert_array_almost_equal
 from utils.parse_config import ConfigParser
 from torchvision import datasets, transforms
 from base import BaseDataLoader
-
+import copy
 def fix_seed(seed=888):
     np.random.seed(seed)
     random.seed(seed)
@@ -39,12 +39,16 @@ def get_cifar100(root, cfg_trainer, train=True,
         val_dataset = CIFAR100_val(root, cfg_trainer, val_idxs, train=train, transform=transform_val)
         if cfg_trainer['asym']:
             train_dataset.asymmetric_noise()
-            # if len(val_dataset) > 0:
-            #     val_dataset.asymmetric_noise()
+        elif cfg_trainer['instance']:
+            train_dataset.instance_noise()
+        elif cfg_trainer['noise_file']:
+            train_dataset.train_labels_gt = train_dataset.train_labels.copy()
+            noise_pack = torch.load(os.path.join(root, 'CIFAR-100_human.pt'))
+            train_dataset.train_labels = np.array(noise_pack[cfg_trainer['noise_file']])[train_dataset.indexs]
+            actual_noise = (train_dataset.train_labels_gt != train_dataset.train_labels).mean()
+            print("acutal noise=", actual_noise)
         else:
             train_dataset.symmetric_noise()
-            # if len(val_dataset) > 0:
-            #     val_dataset.symmetric_noise()
         
         if teacher_idx is not None:
             print(len(teacher_idx))
@@ -169,6 +173,31 @@ class CIFAR100_train(torchvision.datasets.CIFAR100):
         assert_array_almost_equal(P.sum(axis=1), 1, 1)
         return P
 
+    def instance_noise(self):
+        '''
+        Instance-dependent noise
+        https://github.com/haochenglouis/cores/blob/main/data/utils.py
+        '''
+
+        self.train_labels_gt = copy.deepcopy(self.train_labels)
+        fix_seed(self.seed)
+
+        q_ = np.random.normal(loc=self.cfg_trainer['percent'], scale=0.1, size=int(1e6))
+        q = []
+        for pro in q_:
+            if 0 < pro < 1:
+                q.append(pro)
+            if len(q) == 50000:
+                break
+
+        w = np.random.normal(loc=0, scale=1, size=(32 * 32 * 3, 100))
+        for i, sample in enumerate(self.train_data):
+            sample = sample.flatten()
+            p_all = np.matmul(sample, w)
+            p_all[self.train_labels_gt[i]] = -int(1e6)
+            p_all = q[i] * F.softmax(torch.tensor(p_all), dim=0).numpy()
+            p_all[self.train_labels_gt[i]] = 1 - q[i]
+            self.train_labels[i] = np.random.choice(np.arange(100), p=p_all / sum(p_all))
 
     def asymmetric_noise(self, asym=False, random_shuffle=False):
         self.train_labels_gt = self.train_labels.copy()
